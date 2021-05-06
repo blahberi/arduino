@@ -1,8 +1,18 @@
 #include <LiquidCrystal.h>
 #include <Keypad.h>
 
-const byte ROWS = 4;
-const byte COLS = 4;
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define RST_PIN   5     // Configurable, see typical pin layout above
+#define SS_PIN    53   // Configurable, see typical pin layout above
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance
+
+const long myUID = 0x2232FCBC;
+
+#define ROWS 4
+#define COLS 4
 
 char hexaKeys[ROWS][COLS] = {
   {'1', '2', '3', 'A'},
@@ -10,8 +20,8 @@ char hexaKeys[ROWS][COLS] = {
   {'7', '8', '9', 'C'},
   {'*', '0', '#', 'D'}
 };
-byte rowPins[ROWS] = {23, 22, 24, 25};
-byte colPins[COLS] = {28, 29, 30, 31};
+byte rowPins[ROWS] = {22, 25, 26, 29};
+byte colPins[COLS] = {30, 33, 34, 37};
 
 Keypad customKeypad = Keypad( makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS);
 
@@ -20,75 +30,159 @@ String passcode = "1234";
 String eneteredCode = "";
 String hiddenCode = "";
 
-void Clear(){
-  lcd.print("                ");
-  eneteredCode = "";
-  hiddenCode = "";
-}
+#define GREEN 2
+#define RED 3
+#define BUZZER 34
 
-void setup() {
+void setup() 
+{
   Serial.begin(9600);
+  SPI.begin();         // Init SPI bus
+  mfrc522.PCD_Init();  // Init MFRC522 card
   lcd.begin(16, 2);
   lcd.print("Enter passcode");
 
-  pinMode(2, OUTPUT);
-  pinMode(3, OUTPUT);
-  pinMode(34, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(RED, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+  TrippleBeep(100, 50);
 }
 
-void loop() {
+void HandleKeyCode(char key)
+{
+    eneteredCode = eneteredCode + String(key);
+    hiddenCode = hiddenCode + "*";
+    lcd.print(hiddenCode);
+    digitalWrite(BUZZER, HIGH);
+    delay(100);
+    digitalWrite(BUZZER, LOW);
+}
+
+void VerifyPassword()
+{
+    if (eneteredCode == passcode) 
+    {
+      AccessGranted();
+    }
+    else 
+    {
+      AccessDenied();
+    }
+}
+
+void HandleKey()
+{
+  // Get current keypad press
   char key = customKeypad.getKey();
-  if (key) {
+  if (key) 
+  {
+    Serial.println("Size of *: " + String(sizeof(int*)));
+    Serial.println("Size of int: " + String(sizeof(int)));
+    Serial.println("Size of short: " + String(sizeof(short)));
+    Serial.println("Size of long: " + String(sizeof(long)));
     lcd.setCursor(0, 1);
-    if (String(key) == "#") {
-      if (eneteredCode == passcode) {
-        lcd.print("access granted");
-        digitalWrite(2, HIGH);
-        TrippleBeep();
-        delay(600);
-        digitalWrite(2, LOW);
-        lcd.setCursor(0, 1);
-        lcd.print("                ");
-      }
-      else {
-        lcd.print("access denied");
-        digitalWrite(3, HIGH);
-        digitalWrite(34, HIGH);
-        delay(1000);
-        digitalWrite(3, LOW);
-        digitalWrite(34, LOW);
-        lcd.setCursor(0, 1);
-        lcd.print("                ");
-      }
-      Clear();
+
+    switch (key)
+    {
+      case '#':
+        VerifyPassword();
+        Clear();
+        break;
+      case '*':
+        Clear();
+        break;
+      default:
+        HandleKeyCode(key);
+        break;
     }
-    else if (String(key) == "*") {
-      Clear();
-      lcd.setCursor(0, 1);
-      lcd.print("                ");
-    }
-    else {
-      eneteredCode = eneteredCode + String(key);
-      hiddenCode = hiddenCode + "*";
-      Serial.println(eneteredCode);
-      lcd.print(hiddenCode);
-      digitalWrite(34, HIGH);
-      delay(100);
-      digitalWrite(34, LOW);
-    }
+  }
+
+}
+
+void VerifyRFID()
+{
+  // Compare current UID to myUID
+  long *uidByte = &mfrc522.uid.uidByte[0];
+  if (memcmp(mfrc522.uid.uidByte, myUID, sizeof(myUID)) == 0)
+  {
+    AccessGranted();
+  }
+  else
+  {
+    AccessDenied();
   }
 }
 
-void TrippleBeep(){
-        digitalWrite(34, HIGH);
-        delay(100);
-        digitalWrite(34, LOW);
-        delay(50);
-        digitalWrite(34, HIGH);
-        delay(100);
-        digitalWrite(34, LOW);
-        delay(50);
-        digitalWrite(34, HIGH);
-        delay(100);
-        digitalWrite(34, LOW);
+void HandleRFID()
+{
+  // Look for new cards, and select one if present
+  if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) 
+  {
+    delay(50);
+    return;
+  }
+
+  // Check that current UID == sizeof(myUID)
+  if (sizeof(myUID) != mfrc522.uid.size) 
+  {
+    return;
+  }
+
+  VerifyRFID();
+}
+
+void loop() 
+{
+  HandleKey();
+  HandleRFID();
+}
+
+void TrippleBeep(int delayON, int delayOFF)
+{
+  digitalWrite(BUZZER, HIGH);
+  delay(delayON);
+  digitalWrite(BUZZER, LOW);
+  delay(delayOFF);
+  digitalWrite(BUZZER, HIGH);
+  delay(delayON);
+  digitalWrite(BUZZER, LOW);
+  delay(delayOFF);
+  digitalWrite(BUZZER, HIGH);
+  delay(delayON);
+  digitalWrite(BUZZER, LOW);
+}
+
+void AccessGranted()
+{
+  lcd.setCursor(0, 1);
+  lcd.print("access granted");
+  digitalWrite(GREEN, HIGH);
+  TrippleBeep(100, 50);
+  delay(600);
+  digitalWrite(GREEN, LOW);
+  lcd.setCursor(0, 1);
+  lcd.setCursor(0, 1);
+  Clear();
+}
+
+void AccessDenied()
+{
+  lcd.setCursor(0, 1);
+  lcd.print("access denied");
+  digitalWrite(RED, HIGH);
+  digitalWrite(BUZZER, HIGH);
+  delay(1000);
+  digitalWrite(RED, LOW);
+  digitalWrite(BUZZER, LOW);
+  lcd.setCursor(0, 1);
+  lcd.setCursor(0, 1);
+  Clear();
+}
+
+void Clear()
+{
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+  eneteredCode = "";
+  hiddenCode = "";
 }

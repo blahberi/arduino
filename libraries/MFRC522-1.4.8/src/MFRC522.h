@@ -22,7 +22,8 @@
 #define MFRC522_SPICLOCK (4000000u)	// MFRC522 accept upto 10MHz, set to 4MHz.
 #endif
 
-// Firmware data for self-test
+// Firmware data 
+for self-test
 // Reference values based on firmware version
 // Hint: if needed, you can remove unused self-test data to save flash memory
 //
