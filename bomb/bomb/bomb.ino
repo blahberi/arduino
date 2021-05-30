@@ -22,10 +22,10 @@ Keypad customKeypad = Keypad( makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(5, 7, 8, 9, 11, 12);
 bool timer = true;
-String passcode = "0791";
+String passcode = "0911";
 
 String enteredCode = "";
-int timeInMinutes = 0;
+int timeInMinutes = 45;
 long lastSecond = millis();
 int devider = 1000;
 
